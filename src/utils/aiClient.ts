@@ -29,35 +29,125 @@ const getApiConfig = (): ApiConfig => {
   };
 };
 
-const parseJsonFromStream = (chunk: string): TestCase | null => {
-  try {
-    const jsonMatch = chunk.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+/**
+ * 从原始 JSON 对象构造 TestCase，处理 steps/requestBody 等可能是数组的情况。
+ */
+const toTestCase = (raw: any): TestCase => ({
+  id: generateId(),
+  title: raw.title || '测试用例',
+  module: raw.module || '默认模块',
+  method: (raw.method || 'POST') as TestCase['method'],
+  precondition: raw.precondition || '',
+  steps: Array.isArray(raw.steps) ? raw.steps.join('\n') : (raw.steps || ''),
+  requestBody: typeof raw.requestBody === 'object' ? JSON.stringify(raw.requestBody, null, 2) : (raw.requestBody || ''),
+  expectedResult: raw.expectedResult || '',
+  actualResult: raw.actualResult || '',
+  caseType: (raw.caseType || 'normal') as TestCase['caseType'],
+});
+
+/**
+ * 从文本中提取所有 {} 包裹的 JSON 对象，处理多行格式。
+ */
+const extractJsonObjects = (text: string): any[] => {
+  const results: any[] = [];
+  let depth = 0;
+  let start = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          const obj = JSON.parse(text.slice(start, i + 1));
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            results.push(obj);
+          }
+        } catch {
+          // 跳过解析失败的片段
+        }
+        start = -1;
+      }
     }
-  } catch {
-    // ignore parse errors
   }
-  return null;
+  return results;
+};
+
+/**
+ * 从 AI 返回的文本中提取测试用例，支持多种格式：
+ * - 逐行 JSON（纯 JSON lines）
+ * - Markdown 代码块 ```json ... ```
+ * - 散落在文本中的 {} 对象
+ */
+const tryExtractTestCases = (
+  fullText: string,
+  testCases: TestCase[],
+  onProgress?: (tc: TestCase) => void
+) => {
+  // 1. 先提取 Markdown 代码块中的内容
+  const blocks = fullText.split(/```(?:json)?/);
+  let candidateText = '';
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i].trim();
+    if (!block) continue;
+    // 奇数索引是代码块内容（split 后 ``` 之间的部分）
+    candidateText += (i % 2 === 1) ? `\n${block}\n` : `\n${block}\n`;
+  }
+
+  // 2. 从候选文本中提取所有 {} JSON 对象
+  const objs = extractJsonObjects(candidateText);
+
+  for (const obj of objs) {
+    if (obj.title || obj.module) {
+      const tc = toTestCase(obj);
+      onProgress?.(tc);
+      testCases.push(tc);
+    }
+  }
 };
 
 export const generateTestCases = async (
   request: GenerateRequest,
-  onProgress?: (testCase: TestCase) => void
+  onProgress?: (testCase: TestCase) => void,
+  onModeChange?: (mode: 'ai' | 'mock') => void
 ): Promise<TestCase[]> => {
   const config = getApiConfig();
 
-  // 有API Key就走阿里百炼，否则直接走Mock
   if (config.apiKey && config.apiKey.trim()) {
     try {
       return await generateWithApi(config, request, onProgress);
     } catch (error) {
-      console.warn('API调用失败，切换到Mock模式:', error);
+      console.warn('API调用失败，已切换为示例数据:', error instanceof DOMException && error.name === 'AbortError'
+        ? '请求超时（120秒），请检查网络或 API Key 是否正确'
+        : error);
+      onModeChange?.('mock');
       return generateWithMock(onProgress);
     }
   }
+  onModeChange?.('mock');
 
   return generateWithMock(onProgress);
+};
+
+/**
+ * 从任意文本中提取测试用例 JSON 行，支持"每行一个 JSON 对象"格式。
+ * 也能处理非流式的完整 JSON 响应（output.choices[0].message.content 等）。
+ */
+const extractTextFromPayload = (payload: any): string => {
+  // 流式 message 格式: choices[0].message.content[0].text
+  const c0 = payload?.output?.choices?.[0]?.message?.content;
+  if (typeof c0 === 'string') return c0;
+  if (Array.isArray(c0)) {
+    const texts = c0.map((c: any) => c?.text ?? c ?? '').join('');
+    if (texts) return texts;
+  }
+  // 旧 text 格式: output.text
+  if (payload?.output?.text) return payload.output.text;
+  return '';
 };
 
 const generateWithApi = async (
@@ -66,14 +156,24 @@ const generateWithApi = async (
   onProgress?: (testCase: TestCase) => void
 ): Promise<TestCase[]> => {
   const { document, prompt } = request;
-  const systemPrompt = prompt || '你是一个专业的API测试工程师，请根据提供的API文档生成全面的测试用例，包括正例、异常例和边界例。';
-  const fullPrompt = `${systemPrompt}\n\nAPI文档：\n${document}\n\n请生成测试用例，每行返回一个JSON对象，包含以下字段：title, module, method(POST/GET/DELETE), precondition, steps, requestBody, expectedResult, actualResult, caseType(normal/exception/boundary)。`;
+  const systemPrompt = prompt || '你是一个专业的API测试工程师';
+  // 精确指令：让模型直接返回 JSON 数组，不要 markdown 和多余文字
+  const fullPrompt = `${systemPrompt}
+
+## API文档
+${document}
+
+## 要求
+直接输出一个 JSON 数组（不要 markdown、不要代码块、不要多余文字），
+每个元素包含：title, module, method(POST/GET/DELETE/PUT), precondition, steps, requestBody, expectedResult, actualResult, caseType("normal"/"exception"/"boundary")。
+其中 steps 和 requestBody 用字符串表示。
+
+**非常重要：每个测试点必须同时包含正向用例（normal）和反向用例（异常 exception + 边界 boundary），数量各占约一半。**`;
 
   const testCases: TestCase[] = [];
 
-  // 30秒超时
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
 
   const response = await fetch(config.apiUrl, {
     method: 'POST',
@@ -87,8 +187,7 @@ const generateWithApi = async (
         messages: [{ role: 'user', content: fullPrompt }],
       },
       parameters: {
-        result_format: 'text',
-        stream: true,
+        result_format: 'message',
       },
     }),
     signal: controller.signal,
@@ -97,52 +196,42 @@ const generateWithApi = async (
   clearTimeout(timeoutId);
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw new Error(`API请求失败 (${response.status}): ${response.statusText}`);
   }
 
+  // 流式读取，边收边解析（不依赖 SSE 格式）
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error('No response body');
   }
 
   const decoder = new TextDecoder();
-  let buffer = '';
+  let accumulatedRaw = '';
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
+    accumulatedRaw += decoder.decode(value, { stream: true });
 
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        const raw = parseJsonFromStream(data);
-        if (raw) {
-          const processedCase: TestCase = {
-            id: generateId(),
-            title: raw.title || '测试用例',
-            module: raw.module || '默认模块',
-            method: (raw.method || 'POST') as TestCase['method'],
-            precondition: raw.precondition || '',
-            steps: raw.steps || '',
-            requestBody: raw.requestBody || '',
-            expectedResult: raw.expectedResult || '',
-            actualResult: raw.actualResult || '',
-            caseType: (raw.caseType || 'normal') as TestCase['caseType'],
-          };
-          if (onProgress) onProgress(processedCase);
-          testCases.push(processedCase);
-        }
-      }
+    // 从部分 JSON 中提取 "content":"..." 字段（支持转义引号）
+    const m = accumulatedRaw.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m) {
+      tryExtractTestCases(m[1], testCases, onProgress);
     }
   }
 
-  // 如果API没有返回任何用例，抛出异常让外层走Mock
+  // 流结束：完整 JSON 兜底解析
   if (testCases.length === 0) {
+    try {
+      const payload = JSON.parse(accumulatedRaw);
+      const fullText = extractTextFromPayload(payload);
+      if (fullText) tryExtractTestCases(fullText, testCases, onProgress);
+    } catch { /* ignore */ }
+  }
+
+  if (testCases.length === 0) {
+    console.warn('API 响应原文（前 500 字符）:', accumulatedRaw.slice(0, 500));
     throw new Error('API返回结果为空');
   }
 

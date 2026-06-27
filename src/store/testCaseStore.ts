@@ -9,6 +9,7 @@ interface TestCaseStore {
   uploadedFile: File | null;
   systemPrompt: string;
   isGenerating: boolean;
+  isMockData: boolean;
   expandedRowId: string | null;
 
   addTestCase: (testCase: TestCase) => void;
@@ -29,6 +30,7 @@ interface TestCaseStore {
   setUploadedFile: (file: File | null) => void;
   setSystemPrompt: (prompt: string) => void;
   setIsGenerating: (generating: boolean) => void;
+  setIsMockData: (isMock: boolean) => void;
   setExpandedRowId: (id: string | null) => void;
 }
 
@@ -59,6 +61,7 @@ export const useTestCaseStore = create<TestCaseStore>((set, get) => ({
   uploadedFile: null,
   systemPrompt: '',
   isGenerating: false,
+  isMockData: false,
   expandedRowId: null,
 
   addTestCase: (testCase) =>
@@ -130,5 +133,6 @@ export const useTestCaseStore = create<TestCaseStore>((set, get) => ({
   setUploadedFile: (file) => set({ uploadedFile: file }),
   setSystemPrompt: (prompt) => set({ systemPrompt: prompt }),
   setIsGenerating: (generating) => set({ isGenerating: generating }),
+  setIsMockData: (isMock) => set({ isMockData: isMock }),
   setExpandedRowId: (id) => set({ expandedRowId: id }),
 }));

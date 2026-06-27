@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save } from 'lucide-react';
 import { TestCase, RequestMethod, CaseType } from '../../types';
 import { useTestCaseStore } from '../../store/testCaseStore';
@@ -21,7 +22,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({ testCase, 
     onClose();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
@@ -83,7 +84,8 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({ testCase, 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

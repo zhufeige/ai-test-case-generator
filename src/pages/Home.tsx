@@ -15,6 +15,8 @@ import { TestCase, Statistics } from '../types';
 export const Home: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [documentContent, setDocumentContent] = useState('');
+  const [mockBannerDismissed, setMockBannerDismissed] = useState(false);
+  const [mockReason, setMockReason] = useState<'noKey' | 'apiError' | null>(null);
 
   const {
     testCases,
@@ -22,7 +24,9 @@ export const Home: React.FC = () => {
     searchFilter,
     expandedRowId,
     isGenerating,
+    isMockData,
     setIsGenerating,
+    setIsMockData,
     addTestCase,
     toggleSelect,
     toggleSelectAll,
@@ -60,8 +64,24 @@ export const Home: React.FC = () => {
     setDocumentContent(content);
   };
 
+  const hasMockApiKey = () => {
+    try {
+      const cfg = JSON.parse(localStorage.getItem('apiConfig') || '{}');
+      return !!(cfg.apiKey && cfg.apiKey.trim());
+    } catch {
+      return false;
+    }
+  };
+
+  const showMockBanner = testCases.length > 0 && !hasMockApiKey() && !mockBannerDismissed;
+
+  const mockBannerText = mockReason === 'apiError'
+    ? 'AI 请求失败（超时或 API 错误），系统已切换到内置 Mock 数据。请检查 API Key 和网络连接后重试。'
+    : '未配置 API Key，系统使用内置 Mock 数据演示。请在侧边栏填写阿里百炼 API Key 获取真实 AI 生成结果。';
+
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setMockReason(null);
 
     const doc = documentContent || `API接口列表：
 - POST /api/users 创建用户
@@ -82,6 +102,14 @@ export const Home: React.FC = () => {
         },
         (testCase: TestCase) => {
           addTestCase(testCase);
+        },
+        (mode) => {
+          setIsMockData(mode === 'mock');
+          if (mode === 'mock' && hasMockApiKey()) {
+            setMockReason('apiError');
+          } else if (mode === 'mock') {
+            setMockReason('noKey');
+          }
         }
       );
     } catch (error) {
@@ -103,6 +131,7 @@ export const Home: React.FC = () => {
   const handleClear = () => {
     if (confirm('确定要清除所有测试用例吗？')) {
       clearAll();
+      setMockBannerDismissed(false);
       setDocumentContent('');
     }
   };
@@ -147,6 +176,31 @@ export const Home: React.FC = () => {
           </div>
         </div>
       </header>
+
+      {showMockBanner && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="max-w-screen-2xl mx-auto px-4 py-2.5 flex items-center gap-2 text-sm text-amber-800">
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>
+              <strong>示例数据提示：</strong>{mockBannerText}
+            </span>
+            <button
+              onClick={() => setMockBannerDismissed(true)}
+              className="ml-auto text-amber-600 hover:text-amber-800 shrink-0"
+              title="关闭提示"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex max-w-screen-2xl mx-auto">
         <aside

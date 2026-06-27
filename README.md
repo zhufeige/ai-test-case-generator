@@ -90,6 +90,7 @@ src/
 ## 截图
 
 > *（欢迎贡献截图）*
+<img width="1749" height="914" alt="image" src="https://github.com/user-attachments/assets/4c4a1f96-7cc8-42d7-a29b-df7b36cda878" />
 
 ## 开源协议
 

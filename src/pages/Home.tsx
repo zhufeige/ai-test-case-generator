@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { TestTube, Menu, X, Sparkles, Download, Trash2 } from 'lucide-react';
+import { TestTube, Menu, X, Sparkles, Download, Trash2, Plus } from 'lucide-react';
 import { FileUploader } from '../components/Sidebar/FileUploader';
 import { SystemPrompt } from '../components/Sidebar/SystemPrompt';
 import { ActionButtons } from '../components/Sidebar/ActionButtons';
@@ -7,6 +7,7 @@ import { ApiConfig } from '../components/Sidebar/ApiConfig';
 import { TestCaseTable } from '../components/Table/TestCaseTable';
 import { SearchFilter } from '../components/SearchFilter';
 import { StatisticsChart } from '../components/StatisticsChart';
+import { AddTestCaseModal } from '../components/Table/AddTestCaseModal';
 import { useTestCaseStore } from '../store/testCaseStore';
 import { generateTestCases } from '../utils/aiClient';
 import { exportToExcel } from '../utils/excelExporter';
@@ -17,6 +18,7 @@ export const Home: React.FC = () => {
   const [documentContent, setDocumentContent] = useState('');
   const [mockBannerDismissed, setMockBannerDismissed] = useState(false);
   const [mockReason, setMockReason] = useState<'noKey' | 'apiError' | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const {
     testCases,
@@ -249,7 +251,7 @@ export const Home: React.FC = () => {
               </div>
             )}
             <StatisticsChart statistics={statistics} />
-            <SearchFilter modules={statistics.modules} />
+            <SearchFilter modules={statistics.modules} onAddTestCase={() => setShowAddModal(true)} />
             <TestCaseTable
               testCases={filteredTestCases}
               selectedIds={selectedIds}
@@ -265,6 +267,7 @@ export const Home: React.FC = () => {
 
       {/* 浮动操作按钮 */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+
         <button
           onClick={handleGenerate}
           disabled={isGenerating}
@@ -329,6 +332,10 @@ export const Home: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showAddModal && (
+        <AddTestCaseModal onClose={() => setShowAddModal(false)} />
       )}
     </div>
   );

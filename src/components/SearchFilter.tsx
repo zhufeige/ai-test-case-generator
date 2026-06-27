@@ -1,13 +1,14 @@
 import React from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Plus } from 'lucide-react';
 import { useTestCaseStore } from '../store/testCaseStore';
 import { RequestMethod, CaseType } from '../types';
 
 interface SearchFilterProps {
   modules: string[];
+  onAddTestCase?: () => void;
 }
 
-export const SearchFilter: React.FC<SearchFilterProps> = ({ modules }) => {
+export const SearchFilter: React.FC<SearchFilterProps> = ({ modules, onAddTestCase }) => {
   const { searchFilter, setSearchFilter, resetSearchFilter, testCases } = useTestCaseStore();
 
   const hasActiveFilters =
@@ -61,6 +62,17 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({ modules }) => {
           <option value="exception">异常例</option>
           <option value="boundary">边界例</option>
         </select>
+
+        <div className="w-px h-6 bg-gray-200" />
+
+        <button
+          onClick={onAddTestCase}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-sm text-gray-600 hover:text-purple-700 hover:bg-purple-50 rounded-md transition-colors whitespace-nowrap"
+          title="新增用例"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          新增
+        </button>
 
         {hasActiveFilters && (
           <button

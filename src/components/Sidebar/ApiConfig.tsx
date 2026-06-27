@@ -66,15 +66,24 @@ export const ApiConfig: React.FC = () => {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">模型名称</label>
-            <select
+            <input
+              list="model-list"
+              type="text"
               value={config.model}
               onChange={(e) => setConfig({ ...config, model: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-            >
+              placeholder="选择或输入模型名称"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <datalist id="model-list">
               <option value="qwen-max">Qwen Max</option>
               <option value="qwen-plus">Qwen Plus</option>
               <option value="qwen-turbo">Qwen Turbo</option>
-            </select>
+              <option value="deepseek-v3">DeepSeek V3</option>
+              <option value="deepseek-r1">DeepSeek R1</option>
+              <option value="qwen3.7-max">Qwen3.7 Max</option>
+              <option value="qwen3.7-plus">Qwen3.7 Plus</option>
+              <option value="qwen3.6-flash">Qwen3.6 Flash</option>
+            </datalist>
           </div>
           <button
             onClick={handleSave}
